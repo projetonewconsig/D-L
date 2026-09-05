@@ -141,14 +141,14 @@
   /* ---------- Tabs ---------- */
   .tabbar{
     max-width:640px; margin:0 auto;
-    display:flex; gap:8px;
+    display:flex; gap:6px;
     padding:14px 20px 0;
   }
   .tabbtn{
     flex:1;
     font-family:'Space Grotesk',sans-serif;
-    font-size:14px; font-weight:600;
-    padding:10px 12px;
+    font-size:13px; font-weight:600;
+    padding:10px 8px;
     border:1px solid var(--hairline);
     background:var(--paper-raised);
     color:var(--ink-soft);
@@ -260,8 +260,7 @@
     background:var(--paper);
     display:flex; align-items:center; justify-content:space-between;
     cursor:pointer;
-  }
-  .subgroup-label:active{background:var(--blue-tint);}
+  }  .subgroup-label:active{background:var(--blue-tint);}
   .subchevron{
     width:8px; height:8px;
     border-right:2px solid var(--ink-soft);
@@ -271,6 +270,14 @@
     flex-shrink:0;
   }
   .subchevron.closed{transform:rotate(45deg);}
+
+  .completed-section-label{
+    font-size:12px; font-weight:700; color:var(--blue);
+    padding:14px 16px 6px;
+    background:var(--paper);
+    border-top:1px solid var(--hairline);
+  }
+  .completed-section-label:first-child{border-top:none;}
 
   .item{
     display:flex; align-items:flex-start; gap:11px;
@@ -326,6 +333,51 @@
     border-radius:50%;
   }
   .remove-btn:active{background:var(--terracotta-tint); color:var(--terracotta);}
+
+  .edit-btn{
+    flex-shrink:0;
+    width:22px; height:22px;
+    display:flex; align-items:center; justify-content:center;
+    color:var(--ink-soft);
+    font-size:13px;
+    cursor:pointer;
+    border-radius:50%;
+  }
+  .edit-btn:active{background:var(--blue-tint); color:var(--blue);}
+
+  .item.editing{display:block; padding:14px 16px;}
+  .edit-form{display:flex; flex-direction:column; gap:8px;}
+  .edit-input{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:14.5px;
+    padding:9px 10px;
+    border:1px solid var(--blue-line);
+    border-radius:var(--radius);
+    background:var(--paper-raised);
+    color:var(--ink);
+  }
+  .edit-row2{display:flex; gap:8px;}
+  .edit-row2 .edit-priority, .edit-row2 .edit-date{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px;
+    padding:8px;
+    border:1px solid var(--blue-line);
+    border-radius:var(--radius);
+    background:var(--paper-raised);
+    color:var(--ink);
+  }
+  .edit-row2 .edit-priority{flex:1;}
+  .edit-actions{display:flex; gap:8px; justify-content:flex-end;}
+  .edit-save-btn, .edit-cancel-btn{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:13px; font-weight:600;
+    padding:8px 14px;
+    border-radius:var(--radius);
+    cursor:pointer;
+    border:1px solid var(--blue-line);
+  }
+  .edit-save-btn{background:var(--blue); color:var(--paper); border-color:var(--blue);}
+  .edit-cancel-btn{background:var(--paper-raised); color:var(--ink-soft);}
 
   .add-input{
     flex:1 1 140px;
@@ -442,6 +494,7 @@
 <div class="tabbar">
   <button class="tabbtn active" id="tabCronoBtn">Cronograma</button>
   <button class="tabbtn" id="tabCatBtn">Checklists</button>
+  <button class="tabbtn" id="tabDoneBtn">Concluídas</button>
 </div>
 
 <main>
@@ -451,6 +504,7 @@
   </div>
   <div id="cronoView"></div>
   <div id="catView" style="display:none"></div>
+  <div id="doneView" style="display:none"></div>
 </main>
 
 <footer>
@@ -728,6 +782,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ---------------------------------------------------------------
 let state = {};
 let customItems = {}; // { sectionId: [{text, priority, date}] }
+let overrides = {}; // { itemId: {text, priority, date} } — edições em itens fixos
 let hideDone = false;
 
 function allSections(){ return [...cronoSections(), ...CATS]; }
@@ -735,9 +790,15 @@ function allSections(){ return [...cronoSections(), ...CATS]; }
 function itemId(secId, idx){ return secId + '-i' + idx; }
 function customId(secId, idx){ return secId + '-c' + idx; }
 
+function applyOverride(it){
+  const ov = overrides[it._id];
+  if(!ov) return it;
+  return {...it, text: ov.text, priority: ov.priority, date: ov.date || undefined};
+}
+
 function sectionAllItems(sec){
-  const extra = (customItems[sec.id] || []).map((it, idx) => ({...it, _id: customId(sec.id, idx), _custom:true, _idx: idx}));
-  const base = sec.items.map((it, idx) => ({...it, _id: itemId(sec.id, idx), _custom:false}));
+  const extra = (customItems[sec.id] || []).map((it, idx) => applyOverride({...it, _id: customId(sec.id, idx), _custom:true, _idx: idx}));
+  const base = sec.items.map((it, idx) => applyOverride({...it, _id: itemId(sec.id, idx), _custom:false}));
   return [...base, ...extra];
 }
 
@@ -745,17 +806,20 @@ let syncStatus = 'loading'; // 'loading' | 'synced' | 'offline'
 
 async function loadState(){
   try{
-    const { data, error } = await sb.from('app_data').select('key,value').in('key', ['state','customItems']);
+    const { data, error } = await sb.from('app_data').select('key,value').in('key', ['state','customItems','overrides']);
     if(error) throw error;
     const stateRow = data.find(r => r.key === 'state');
     const customRow = data.find(r => r.key === 'customItems');
+    const overridesRow = data.find(r => r.key === 'overrides');
     state = stateRow ? stateRow.value : {};
     customItems = customRow ? customRow.value : {};
+    overrides = overridesRow ? overridesRow.value : {};
     syncStatus = 'synced';
   }catch(e){
     console.error('Falha ao carregar do Supabase', e);
     state = {};
     customItems = {};
+    overrides = {};
     syncStatus = 'offline';
   }
   openSections = new Set([CATS[0].id]);
@@ -771,6 +835,7 @@ function subscribeRealtime(){
       if(!row) return;
       if(row.key === 'state') state = row.value;
       if(row.key === 'customItems') customItems = row.value;
+      if(row.key === 'overrides') overrides = row.value;
       render();
     })
     .subscribe();
@@ -781,7 +846,7 @@ function persist(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     try{
-      await sb.from('app_data').update({value: state, updated_at: new Date().toISOString()}).eq('key','state');
+      await sb.from('app_data').upsert({key:'state', value: state, updated_at: new Date().toISOString()});
       syncStatus = 'synced';
     }catch(e){
       console.error('Falha ao salvar', e);
@@ -796,10 +861,25 @@ function persistCustom(){
   clearTimeout(saveCustomTimer);
   saveCustomTimer = setTimeout(async () => {
     try{
-      await sb.from('app_data').update({value: customItems, updated_at: new Date().toISOString()}).eq('key','customItems');
+      await sb.from('app_data').upsert({key:'customItems', value: customItems, updated_at: new Date().toISOString()});
       syncStatus = 'synced';
     }catch(e){
       console.error('Falha ao salvar tarefas novas', e);
+      syncStatus = 'offline';
+    }
+    updateHeader();
+  }, 400);
+}
+
+let saveOverridesTimer = null;
+function persistOverrides(){
+  clearTimeout(saveOverridesTimer);
+  saveOverridesTimer = setTimeout(async () => {
+    try{
+      await sb.from('app_data').upsert({key:'overrides', value: overrides, updated_at: new Date().toISOString()});
+      syncStatus = 'synced';
+    }catch(e){
+      console.error('Falha ao salvar edições', e);
       syncStatus = 'offline';
     }
     updateHeader();
@@ -838,6 +918,37 @@ function toggle(id){
   render();
 }
 
+function saveEdit(it, sec){
+  const textEl = document.getElementById('editText');
+  const priorityEl = document.getElementById('editPriority');
+  const dateEl = document.getElementById('editDate');
+  const text = textEl.value.trim();
+  if(!text) return;
+  const override = {text, priority: priorityEl.value, date: dateEl.value || null};
+  if(it._custom){
+    customItems[sec.id][it._idx] = override;
+    persistCustom();
+  } else {
+    overrides[it._id] = override;
+    persistOverrides();
+  }
+  editingItemId = null;
+  render();
+}
+
+let editingItemId = null;
+
+function isoFromBRDate(d){
+  if(!d) return '';
+  const m = d.match(/^(\d{2})\/(\d{2})$/);
+  if(!m) return '';
+  return `2026-${m[2]}-${m[1]}`;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 let openSections = new Set();
 let selectedSection = null;
 let monthDropdownOpen = false;
@@ -857,7 +968,33 @@ function sectionStats(sec){
   return {total, done};
 }
 
+function renderEditRow(it, sec){
+  const isoDate = it.date && /^\d{4}-\d{2}-\d{2}$/.test(it.date) ? it.date : isoFromBRDate(it.date);
+  const priority = it.priority === 'compromisso' ? 'normal' : it.priority;
+  return `
+    <div class="item editing">
+      <div class="edit-form">
+        <input type="text" class="edit-input" id="editText" value="${escapeHtml(it.text)}">
+        <div class="edit-row2">
+          <select class="edit-priority" id="editPriority">
+            <option value="normal" ${priority==='normal'?'selected':''}>Normal</option>
+            <option value="alta" ${priority==='alta'?'selected':''}>Alta</option>
+            <option value="muitoAlta" ${priority==='muitoAlta'?'selected':''}>Urgente</option>
+          </select>
+          <input type="date" class="edit-date" id="editDate" value="${isoDate}">
+        </div>
+        <div class="edit-actions">
+          <button class="edit-cancel-btn" data-secid="${sec.id}" data-itemid="${it._id}">Cancelar</button>
+          <button class="edit-save-btn" data-secid="${sec.id}" data-itemid="${it._id}">Salvar</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 function renderItemRow(it, sec){
+  if(editingItemId === it._id){
+    return renderEditRow(it, sec);
+  }
   const isDone = !!state[it._id];
   const tag = renderTags(it);
   const removeBtn = it._custom
@@ -870,6 +1007,7 @@ function renderItemRow(it, sec){
         <div class="item-text">${it.text}</div>
         <div class="item-tags">${tag}</div>
       </div>
+      <div class="edit-btn" data-secid="${sec.id}" data-itemid="${it._id}">✎</div>
       ${removeBtn}
     </div>`;
 }
@@ -1044,21 +1182,49 @@ function applyHeaderBanner(){
   }
 }
 
+function renderCompletedList(){
+  let html = '';
+  let any = false;
+  allSections().forEach(sec => {
+    const doneItems = sectionAllItems(sec).filter(it => state[it._id]);
+    if(doneItems.length === 0) return;
+    any = true;
+    html += `<div class="completed-section-label">${sec.title}</div>`;
+    doneItems.forEach(it => { html += renderItemRow(it, sec); });
+  });
+  if(!any){
+    html = `<div class="item"><div class="item-main"><div class="item-text" style="color:var(--ink-soft)">Nada concluído ainda.</div></div></div>`;
+  }
+  return `<div class="group open"><div class="group-body" style="display:block">${html}</div></div>`;
+}
+
 let activeTab = 'crono';
 function render(){
   updateHeader();
   applyHeaderBanner();
   const cronoHtml = renderMonthBox() + renderCronoDetail();
   const catHtml = CATS.map(renderGroup).join('') + renderEnxoval();
+  const doneHtml = renderCompletedList();
   document.getElementById('cronoView').innerHTML = cronoHtml;
   document.getElementById('catView').innerHTML = catHtml;
+  document.getElementById('doneView').innerHTML = doneHtml;
   document.getElementById('cronoView').style.display = activeTab === 'crono' ? 'block' : 'none';
   document.getElementById('catView').style.display = activeTab === 'cat' ? 'block' : 'none';
+  document.getElementById('doneView').style.display = activeTab === 'done' ? 'block' : 'none';
+  document.querySelector('.filter-row').style.display = activeTab === 'done' ? 'none' : 'flex';
 
   const {total, done} = overallStats();
   document.getElementById('viewCount').textContent = `${total-done} pendentes`;
 
   attachHandlers();
+}
+
+function findItemAndSection(secId, itemId){
+  const sec = allSections().find(s => s.id === secId);
+  if(!sec) return null;
+  const it = sectionAllItems(sec).find(x => x._id === itemId);
+  if(!it) return null;
+  return {it, sec};
 }
 
 function attachHandlers(){
@@ -1072,6 +1238,27 @@ function attachHandlers(){
     el.onclick = (e) => {
       e.stopPropagation();
       removeCustomItem(el.dataset.secid, parseInt(el.dataset.idx, 10));
+    };
+  });
+  document.querySelectorAll('.edit-btn').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      editingItemId = el.dataset.itemid;
+      render();
+    };
+  });
+  document.querySelectorAll('.edit-save-btn').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const found = findItemAndSection(el.dataset.secid, el.dataset.itemid);
+      if(found) saveEdit(found.it, found.sec);
+    };
+  });
+  document.querySelectorAll('.edit-cancel-btn').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      editingItemId = null;
+      render();
     };
   });
   document.querySelectorAll('.month-chip').forEach(el => {
@@ -1118,6 +1305,7 @@ function submitGlobalAdd(){
   activeTab = 'crono';
   document.getElementById('tabCronoBtn').classList.add('active');
   document.getElementById('tabCatBtn').classList.remove('active');
+  document.getElementById('tabDoneBtn').classList.remove('active');
   selectedSection = secId;
   render();
   window.scrollTo({top:0, behavior:'smooth'});
@@ -1138,18 +1326,16 @@ document.getElementById('globalAddDate').onchange = (e) => {
   }
 };
 
-document.getElementById('tabCronoBtn').onclick = () => {
-  activeTab = 'crono';
-  document.getElementById('tabCronoBtn').classList.add('active');
-  document.getElementById('tabCatBtn').classList.remove('active');
+function setActiveTab(tab){
+  activeTab = tab;
+  document.getElementById('tabCronoBtn').classList.toggle('active', tab==='crono');
+  document.getElementById('tabCatBtn').classList.toggle('active', tab==='cat');
+  document.getElementById('tabDoneBtn').classList.toggle('active', tab==='done');
   render();
-};
-document.getElementById('tabCatBtn').onclick = () => {
-  activeTab = 'cat';
-  document.getElementById('tabCatBtn').classList.add('active');
-  document.getElementById('tabCronoBtn').classList.remove('active');
-  render();
-};
+}
+document.getElementById('tabCronoBtn').onclick = () => setActiveTab('crono');
+document.getElementById('tabCatBtn').onclick = () => setActiveTab('cat');
+document.getElementById('tabDoneBtn').onclick = () => setActiveTab('done');
 document.getElementById('hideDone').onchange = (e) => {
   hideDone = e.target.checked;
   render();
