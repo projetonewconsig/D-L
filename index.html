@@ -345,6 +345,16 @@
   }
   .edit-btn:active{background:var(--blue-tint); color:var(--blue);}
 
+  .cal-btn{
+    flex-shrink:0;
+    width:22px; height:22px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:13px;
+    cursor:pointer;
+    border-radius:50%;
+  }
+  .cal-btn:active{background:var(--sage-tint);}
+
   .item.editing{display:block; padding:14px 16px;}
   .edit-form{display:flex; flex-direction:column; gap:8px;}
   .edit-input{
@@ -991,6 +1001,36 @@ function renderEditRow(it, sec){
     </div>`;
 }
 
+function addDaysISO(iso, n){
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0,10);
+}
+
+function isoDateForItem(it, sec){
+  if(!it.date) return null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(it.date)) return it.date;
+  const m = it.date.match(/(\d{2})\/(\d{2})$/);
+  if(!m) return null;
+  const day = m[1], month = m[2];
+  const year = isMonthKey(sec.id) ? sec.id.split('-')[0] : '2026';
+  return `${year}-${month}-${day}`;
+}
+
+function gcalUrlForItem(it, sec){
+  const iso = isoDateForItem(it, sec);
+  if(!iso) return null;
+  const start = iso.replace(/-/g,'');
+  const end = addDaysISO(iso, 1).replace(/-/g,'');
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: it.text,
+    dates: `${start}/${end}`,
+    details: 'Adicionado pelo Organizador de Tarefas'
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 function renderItemRow(it, sec){
   if(editingItemId === it._id){
     return renderEditRow(it, sec);
@@ -1000,6 +1040,10 @@ function renderItemRow(it, sec){
   const removeBtn = it._custom
     ? `<div class="remove-btn" data-secid="${sec.id}" data-idx="${it._idx}">×</div>`
     : '';
+  const gcalUrl = gcalUrlForItem(it, sec);
+  const calBtn = gcalUrl
+    ? `<div class="cal-btn" data-url="${escapeHtml(gcalUrl)}">📅</div>`
+    : '';
   return `
     <div class="item ${isDone?'done':''}">
       <div class="checkbox ${isDone?'checked':''}" data-id="${it._id}"></div>
@@ -1007,6 +1051,7 @@ function renderItemRow(it, sec){
         <div class="item-text">${it.text}</div>
         <div class="item-tags">${tag}</div>
       </div>
+      ${calBtn}
       <div class="edit-btn" data-secid="${sec.id}" data-itemid="${it._id}">✎</div>
       ${removeBtn}
     </div>`;
@@ -1245,6 +1290,12 @@ function attachHandlers(){
       e.stopPropagation();
       editingItemId = el.dataset.itemid;
       render();
+    };
+  });
+  document.querySelectorAll('.cal-btn').forEach(el => {
+    el.onclick = (e) => {
+      e.stopPropagation();
+      window.open(el.dataset.url, '_blank');
     };
   });
   document.querySelectorAll('.edit-save-btn').forEach(el => {
