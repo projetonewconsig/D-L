@@ -572,7 +572,7 @@
   .tv-calc{margin-top:8px;padding:10px;border-radius:10px;background:var(--blue-tint);font-size:12px;}
   .tv-calc .tv-grid3{margin-top:6px;}
   .tv-calc-res{margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--blue);}
-  .tv-catpick{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;}
+  .tv-catpick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;}
   .tv-catbtn{border:1px solid var(--hairline);border-radius:12px;padding:8px 0;background:var(--paper-raised);font-family:inherit;font-size:11px;color:var(--ink);cursor:pointer;text-align:center;}
   .tv-catbtn i{font-size:18px;display:block;margin-bottom:2px;}
   .tv-catbtn.on{border:1.5px solid var(--terracotta);background:var(--terracotta-tint);color:#7E3A26;}
@@ -1571,8 +1571,10 @@ const TV_CATS = {
   passeios:   {label:'Passeios',   short:'Passeios', icon:'ti-ticket',           bg:'var(--sage-tint)',       fg:'#2F4E38'},
   // Souvenir: adicionada em 07/11/2026 a pedido do Danilo (lembrancinhas, ímãs, bonés etc.)
   souvenir:   {label:'Souvenir',   short:'Souvenir', icon:'ti-gift',             bg:'#EDE3F0',                fg:'#5E3A6E'},
+  // Outros: adicionada em 07/11/2026 (banheiro, barbearia e o que não se encaixa nas demais)
+  outros:     {label:'Outros',     short:'Outros',   icon:'ti-dots',             bg:'#EDE6D3',                fg:'#4A5A62'},
 };
-const TV_CAT_ORDER = ['transporte','hospedagem','comida','passeios','souvenir'];
+const TV_CAT_ORDER = ['transporte','hospedagem','comida','passeios','souvenir','outros'];
 
 const TV_MODES = {
   carro:  {label:'Carro',          icon:'ti-car'},
@@ -1698,7 +1700,7 @@ function tvCheapest(t){
 }
 function tvSpent(t){ return (t.expenses||[]).reduce((s,e) => s + (Number(e.value)||0), 0); }
 function tvSpentByCat(t){
-  const r = {transporte:0, hospedagem:0, comida:0, passeios:0, souvenir:0};
+  const r = {transporte:0, hospedagem:0, comida:0, passeios:0, souvenir:0, outros:0};
   (t.expenses||[]).forEach(e => { if(r[e.cat] !== undefined) r[e.cat] += Number(e.value)||0; });
   return r;
 }
